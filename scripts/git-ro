@@ -1,0 +1,84 @@
+#!/bin/sh
+# Read-only git, installed in the image as /usr/local/bin/git (ahead of /usr/bin/git).
+#
+# This is a usability layer, NOT a security boundary: /usr/bin/git is still there and
+# `sudo pacman` is container root. What actually stops mutation is the read-only bind
+# mount on /workspace/.git, and what actually stops `push` is that this container holds
+# no credential of any kind. The wrapper exists so a blocked command explains itself
+# instead of failing with "Read-only file system" somewhere deep in git.
+set -u
+
+GIT=/usr/bin/git
+
+deny() {
+  echo "git: '$*' is not available in this container." >&2
+  echo "  .git is mounted read-only and there are no git credentials here." >&2
+  echo "  Commit, fetch and push on the host." >&2
+  exit 1
+}
+
+export GIT_OPTIONAL_LOCKS=0 GIT_TERMINAL_PROMPT=0
+# Writable copy of the index, refreshed by scripts/claude.sh at container start, so
+# status/diff can use the stat cache against a read-only .git. Only set it if the copy
+# exists: pointing git at a missing index file would make it treat every file as new.
+[ -f "$HOME/.cache/git/index" ] && export GIT_INDEX_FILE="$HOME/.cache/git/index"
+
+# Global flags, before the subcommand. Refuse anything that can point git at another
+# repository or run a command: `-c core.pager=`, `-c alias.x=!sh`, `-c core.hooksPath=`
+# and `--exec-path` are all arbitrary execution.
+globals=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -c|-c*|-C|-C*|--config-env|--config-env=*|--exec-path|--exec-path=*|\
+    --git-dir|--git-dir=*|--work-tree|--work-tree=*|--namespace|--namespace=*|\
+    --upload-pack|--upload-pack=*|--receive-pack|--receive-pack=*|--super-prefix=*)
+      deny "$1" ;;
+    -p|--paginate|-P|--no-pager|--no-optional-locks|--no-replace-objects|\
+    --literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--bare)
+      globals="$globals $1"; shift ;;
+    --version) exec "$GIT" --version ;;
+    --help|-h) exec "$GIT" --help ;;
+    -*) deny "$1" ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || exec "$GIT" --help
+sub=$1; shift
+
+# `branch` / `tag` with no arguments, or with an explicit list flag, only read.
+# Anything positional without -l (a new branch/tag name) or any other flag (-d, -m,
+# -f, --set-upstream-to, ...) writes.
+listish() {
+  _list=0; _pos=0
+  for _a in "$@"; do
+    case "$_a" in
+      -l|--list) _list=1 ;;
+      -a|--all|-v|-vv|--verbose|-q|--quiet|--color|--color=*|--no-color|--sort=*|\
+      --format=*|--contains|--contains=*|--no-contains|--no-contains=*|--merged|\
+      --merged=*|--no-merged|--no-merged=*|--points-at|--points-at=*|-i|--ignore-case|\
+      --column|--column=*|--no-column|--omit-empty) ;;
+      -*) return 1 ;;
+      *) _pos=1 ;;
+    esac
+  done
+  [ "$_pos" = 1 ] && [ "$_list" = 0 ] && return 1
+  return 0
+}
+
+case "$sub" in
+  status|log|diff|show|blame|annotate|grep|ls-files|ls-tree|rev-parse|rev-list|cat-file|\
+  describe|shortlog|name-rev|merge-base|diff-tree|diff-index|whatchanged|count-objects|\
+  check-ignore|check-attr|show-ref|for-each-ref|show-branch|verify-commit|verify-tag|\
+  version|help)
+    ;;
+  branch|tag)   listish "$@" || deny "$sub $*" ;;
+  reflog)       case "${1:-show}" in show|exists) ;; *) deny "reflog ${1:-}" ;; esac ;;
+  remote)       case "${1:--v}"   in -v|--verbose|show|get-url) ;; *) deny "remote ${1:-}" ;; esac ;;
+  stash)        case "${1:-push}" in list|show) ;; *) deny "stash ${1:-}" ;; esac ;;
+  worktree)     case "${1:-list}" in list) ;; *) deny "worktree ${1:-}" ;; esac ;;
+  config)       case "${1:---list}" in --get|--get-all|--get-regexp|-l|--list) ;; *) deny "config ${1:-}" ;; esac ;;
+  *)            deny "$sub" ;;
+esac
+
+# shellcheck disable=SC2086  # $globals is a collected list of literal flags
+exec "$GIT" $globals "$sub" "$@"

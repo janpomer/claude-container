@@ -1,0 +1,8 @@
+# Added to COMPOSE_FILE by scripts/lib.sh only when $PROJECT_DIR/.git is a real directory.
+# Mounts the repository's git dir read-only on top of the project mount: no commits, no
+# index writes, no ref updates, no fetch. Container root cannot remount it rw — that needs
+# CAP_SYS_ADMIN, which Docker drops.
+services:
+  claude:
+    volumes:
+      - ${PROJECT_DIR:?run via scripts/claude.sh}/.git:/workspace/.git:ro
