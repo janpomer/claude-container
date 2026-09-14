@@ -117,3 +117,7 @@ Confirmed against the Claude Code docs (Sep 2026):
 - `scripts/git-ro` — the read-only git wrapper, installed in the image as
   `/usr/local/bin/git`.
 - `docs/git-readonly.md` — the design note for the read-only git setup.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
