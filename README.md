@@ -107,13 +107,17 @@ Confirmed against the Claude Code docs (Sep 2026):
 ## Layout
 
 - `Dockerfile` — the image.
-- `compose.yaml` — mounts `$PROJECT_DIR` at `/workspace`, a named `config` volume at
+- `compose.yaml` — template: mounts `$PROJECT_DIR` at `/workspace`, a named volume at
   `~/.claude` (per project) and `$AUTH_DIR` at `~/.claude-auth` (shared).
-- `scripts/lib.sh` — sets those variables, `COMPOSE_FILE`, and the compose project name, which is
-  `claude-<folder>-<hash of the full path>`: the hash is what keeps two different
-  projects with the same folder name from sharing a container and volume.
-- `compose.git.yaml` — the read-only `.git` mount, added to `COMPOSE_FILE` by `lib.sh`
-  only when the project is a git repo.
+- `scripts/lib.sh` — sets those variables and renders the templates. All projects live in
+  **one** compose stack, `claude-container`; each project is its own service and container,
+  named after its folder (`uls-rs`). Compose can't interpolate a service key, so `lib.sh`
+  copies the templates with the `claude` key replaced into `$XDG_RUNTIME_DIR/claude-container/`
+  and points `COMPOSE_FILE` there. The state volume is `claude-<folder>-<hash of the full
+  path>_config`: the hash keeps two projects with the same folder name from sharing history
+  and permissions (their containers would still clash on the name — rename one).
+- `compose.git.yaml` — the read-only `.git` mount, rendered and added to `COMPOSE_FILE` by
+  `lib.sh` only when the project is a git repo.
 - `scripts/git-ro` — the read-only git wrapper, installed in the image as
   `/usr/local/bin/git`.
 - `docs/git-readonly.md` — the design note for the read-only git setup.

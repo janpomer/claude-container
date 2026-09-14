@@ -1,12 +1,15 @@
-# Usage: scripts/claude.sh /path/to/project   (sets PROJECT_DIR, AUTH_DIR and the compose project name)
+# Template, rendered by scripts/lib.sh: the `claude` service key is replaced with the
+# project folder name, so every project is its own service in the one `claude-container`
+# stack. Usage: scripts/claude.sh /path/to/project
 services:
   claude:
     build:
-      context: .
+      context: ${REPO_DIR:?run via scripts/claude.sh}
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
     image: claude-container
+    container_name: ${SERVICE:?run via scripts/claude.sh}   # the project folder, e.g. uls-rs
     volumes:
       - ${PROJECT_DIR:?run via scripts/claude.sh}:/workspace
       - config:/home/claude/.claude          # per-project: .claude.json, history, tool permissions
@@ -17,3 +20,4 @@ services:
 
 volumes:
   config:
+    name: ${VOLUME_NAME:?run via scripts/claude.sh}   # claude-<folder>-<hash of full path>_config

@@ -20,7 +20,7 @@ SHARED=/home/claude/.claude-auth
 
 # Adopt any credential a previous login left inside the container, then link
 # ~/.claude/.credentials.json into the shared mount. settings.json is seeded once.
-docker compose exec -T -e CFG="$CFG" -e SHARED="$SHARED" claude sh -e -c '
+docker compose exec -T -e CFG="$CFG" -e SHARED="$SHARED" "$SERVICE" sh -e -c '
   if [ -f "$CFG/.credentials.json" ] && [ ! -L "$CFG/.credentials.json" ]; then
     [ -f "$SHARED/.credentials.json" ] || cp "$CFG/.credentials.json" "$SHARED/.credentials.json"
     rm -f "$CFG/.credentials.json"
@@ -49,11 +49,11 @@ docker compose exec -T -e CFG="$CFG" -e SHARED="$SHARED" claude sh -e -c '
   fi
 '
 
-docker compose exec claude claude "$@" || true
+docker compose exec "$SERVICE" claude "$@" || true
 
 # claude may write credentials by rename, which replaces the symlink with a real
 # file; fold that back into the shared mount so the next run still shares it.
-docker compose exec -T -e CFG="$CFG" -e SHARED="$SHARED" claude sh -c '
+docker compose exec -T -e CFG="$CFG" -e SHARED="$SHARED" "$SERVICE" sh -c '
   if [ -f "$CFG/.credentials.json" ] && [ ! -L "$CFG/.credentials.json" ]; then
     mv -f "$CFG/.credentials.json" "$SHARED/.credentials.json"
     ln -sfn "$SHARED/.credentials.json" "$CFG/.credentials.json"
